@@ -18,7 +18,7 @@ def argument_parser():
     parser.add_argument("--data_dir", type=str, default="./data/Fight/Fight-dataset-2020")
     parser.add_argument("--snapshots", type=str, default="./snapshots")
     parser.add_argument("--debug", action='store_false')
-    parser.add_argument("--batchsize", type=int, default=8)
+    parser.add_argument("--batchsize", type=int, default=16)
     parser.add_argument("--epoch", type=int, default=100)
     parser.add_argument("--height", type=int, default=256)
     parser.add_argument("--width", type=int, default=192)
@@ -72,13 +72,13 @@ def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
     best_acc = 0
     start_epoch = 0
     for epoch in range(start_epoch, num_epochs):
+        print('epoch:', epoch)
+
         for phase in ['train', 'val']:
 
             loss = 0.0
             running_corrects = 0
 
-            # set model to train() or eval() mode depending on whether it is trained
-            # or being validated. Primarily affects layers such as BatchNorm or Dropout.
             if phase == 'train':
                 model.train()
             else:
@@ -104,10 +104,7 @@ def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
             if phase == 'train':
                 scheduler.step(epoch)
 
-            print('epoch:', epoch)
             print(f"{phase} Loss: {epoch_loss} Acc: {epoch_acc}")
-            print('-' * 60)
-            print('')
 
             with SummaryWriter(logdir='logdir/', comment='train_loss') as writer:
                 if phase == 'train':
@@ -127,6 +124,9 @@ def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
                     'val_acc': epoch_acc
                 }
                 torch.save(state, os.path.join(model_path, 'epoch_{:d}_acc{:4f}.pth'.format(epoch, epoch_acc)))
+
+        print('-' * 60)
+        print('')
 
 
 if __name__ == '__main__':
