@@ -19,7 +19,7 @@ def argument_parser():
     parser.add_argument("--data_dir", type=str, default="./data/Fight/Fight-dataset-2020")
     parser.add_argument("--snapshots", type=str, default="./snapshots")
     parser.add_argument("--debug", action='store_false')
-    parser.add_argument("--batchsize", type=int, default=64)
+    parser.add_argument("--batchsize", type=int, default=48)
     parser.add_argument("--epoch", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.01, help='learning rate of feature extractor')
     parser.add_argument('--classifier', type=str, default='base', help='classifier name')
