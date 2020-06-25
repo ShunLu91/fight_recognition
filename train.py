@@ -45,21 +45,6 @@ args = argument_parser().parse_args()
 
 
 def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epochs=100, model_path="model/"):
-    """Initalizes and the model for a fixed number of epochs, using dataloaders from the specified directory, 
-    selected optimizer, scheduler, criterion, defualt otherwise. Features saving and restoration capabilities as well. 
-    Adapted from the PyTorch tutorial found here: https://pytorch.org/tutorials/beginner/transfer_learning_tutorial.html
-
-        Args:
-            num_classes (int): Number of classes in the data
-            directory (str): Directory where the data is to be loaded from
-            layer_sizes (list, optional): Number of blocks in each layer. Defaults to [2, 2, 2, 2], equivalent to ResNet18.
-            num_epochs (int, optional): Number of epochs to train for. Defaults to 45. 
-            save (bool, optional): If true, the model will be saved to path. Defaults to True. 
-            path (str, optional): The directory to load a model checkpoint from, and if save == True, save to. Defaults to "model_data.pth.tar".
-    """
-
-    # initalize the ResNet 18 version of this model
-    torch.backends.cudnn.benchmark = True
 
     model = R2Plus1DClassifier(num_classes=num_classes, layer_sizes=layer_sizes)
 
@@ -179,8 +164,11 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
 
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+    torch.backends.cudnn.benchmark = True
+
+
     train_model(
-        root=os.path.join(args.data_dir),
+        root=os.path.join(args.data_dir, 'videos'),
         num_classes=2,
         layer_sizes=[2, 2, 2, 2],
         num_epochs=args.epoch,
