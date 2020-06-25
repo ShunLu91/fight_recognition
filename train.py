@@ -39,8 +39,8 @@ args = argument_parser().parse_args()
 print(args)
 
 
-def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epochs=100, model_path="model/"):
-    if args.model=='R2Plus1D':
+def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
+    if args.model == 'R2Plus1D':
         model = R2Plus1DClassifier(num_classes=num_classes, layer_sizes=layer_sizes)
 
     model = torch.nn.DataParallel(model, device_ids=[0, 1, 2, 3])
@@ -48,8 +48,8 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
 
     criterion = nn.CrossEntropyLoss().cuda()
     optimizer = optim.SGD(model.parameters(), lr=args.lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15,
-                                          gamma=0.4)  # the scheduler divides the lr by 10 every 10 epochs
+    # the scheduler divides the lr by 10 every 10 epochs
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.4)
 
     # prepare the dataloaders into a dict
     train_path = os.path.join(args.data_dir, 'train_split.txt')
@@ -69,9 +69,8 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
     dataset_sizes = {x: len(dataloaders[x].dataset) for x in ['train', 'val']}
 
-    start_epoch = 0
-
     best_acc = 0
+    start_epoch = 0
     for epoch in range(start_epoch, num_epochs):
         for phase in ['train', 'val']:
 
