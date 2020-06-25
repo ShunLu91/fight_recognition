@@ -19,7 +19,7 @@ def argument_parser():
     parser.add_argument("--data_dir", type=str, default="./data/Fight/Fight-dataset-2020")
     parser.add_argument("--snapshots", type=str, default="./snapshots")
     parser.add_argument("--debug", action='store_false')
-    parser.add_argument("--batchsize", type=int, default=16)
+    parser.add_argument("--batchsize", type=int, default=32)
     parser.add_argument("--epoch", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.01, help='learning rate of feature extractor')
     parser.add_argument('--classifier', type=str, default='base', help='classifier name')
@@ -119,7 +119,7 @@ def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
             if phase == 'train':
                 scheduler.step(epoch)
             else:
-                print('best_acc:', best_acc)
+                print('best_acc:', best_acc.item())
 
         print('-' * 60)
         print('')
