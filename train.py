@@ -99,10 +99,9 @@ def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
             epoch_loss = loss / dataset_sizes[phase]
             epoch_acc = running_corrects.double() / dataset_sizes[phase]
 
-            if phase == 'train':
-                scheduler.step(epoch)
-
             print(f"{phase} Loss: {epoch_loss} Acc: {epoch_acc}")
+
+
 
             with SummaryWriter(logdir='logdir/', comment='train_loss') as writer:
                 if phase == 'train':
@@ -122,6 +121,10 @@ def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
                     'val_acc': epoch_acc
                 }
                 torch.save(state, os.path.join(model_path, 'epoch_{:d}_acc{:4f}.pth'.format(epoch, epoch_acc)))
+            if phase == 'train':
+                scheduler.step(epoch)
+            else:
+                print('best_acc:', best_acc)
 
         print('-' * 60)
         print('')
