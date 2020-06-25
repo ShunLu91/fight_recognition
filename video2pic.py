@@ -50,22 +50,24 @@ def process_video(video_name):
     capture.release()
 
 
-data_dir = 'data/Fight/Fight-dataset-2020'
-for item in open(os.path.join(data_dir, 'train_split.txt'), 'r'):
-    name, _, _, _, _ = item.strip().split()
-    process_video(os.path.join(data_dir, 'videos/', name))
-    print(name + 'has done')
 
-for item in open(os.path.join(data_dir,'val_split.txt'), 'r'):
-    name, _, _, _, _ = item.strip().split()
-    process_video(os.path.join(data_dir, 'videos/', name))
-    print(name + 'has done')
+if __name__ == '__main__':
+    data_dir = 'data/Fight/Fight-dataset-2020'
+    for item in open(os.path.join(data_dir, 'train_split.txt'), 'r'):
+        name, _, _, _, _ = item.strip().split()
+        process_video(os.path.join(data_dir, 'videos/', name))
+        print(name + 'has done')
+
+    for item in open(os.path.join(data_dir,'val_split.txt'), 'r'):
+        name, _, _, _, _ = item.strip().split()
+        process_video(os.path.join(data_dir, 'videos/', name))
+        print(name + 'has done')
 
 # frames = sorted([os.path.join('test/Y_9SG3DD_tg_000003_000013', img) for img in os.listdir('test/Y_9SG3DD_tg_000003_000013')])
-imgname = [int(os.path.splitext(img)[0]) for img in os.listdir('test/Y_9SG3DD_tg_000003_000013')]
-imgname.sort()
-for i in imgname:
-    print('0000' + str(i) + '.jpg')
+# imgname = [int(os.path.splitext(img)[0]) for img in os.listdir('test/Y_9SG3DD_tg_000003_000013')]
+# imgname.sort()
+# for i in imgname:
+#     print('0000' + str(i) + '.jpg')
 
 # for i, frame_name in enumerate(frames):
 #     print(frame_name)
