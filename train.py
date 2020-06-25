@@ -5,10 +5,11 @@ import argparse
 from torch import nn, optim
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from tensorboardX import SummaryWriter
 
 from newDataset import VideoDataset
 from network import R2Plus1DClassifier
+
+from apex import amp
 
 
 def argument_parser():
@@ -46,6 +47,8 @@ def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
 
     criterion = nn.CrossEntropyLoss().cuda()
     optimizer = optim.SGD(model.parameters(), lr=args.lr)
+
+    model, optimizer = amp.initialize(model, optimizer)
     # the scheduler divides the lr by 10 every 10 epochs
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.4)
 
@@ -91,7 +94,9 @@ def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
                     _, preds = torch.max(outputs, 1)
                     _loss = criterion(outputs, labels)
                     if phase == 'train':
-                        _loss.backward()
+                        with amp.scale_loss(_loss, optimizer) as scaled_loss:
+                            scaled_loss.backward()
+                        # _loss.backward()
                         optimizer.step()
                 loss += _loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
@@ -100,17 +105,6 @@ def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
             epoch_acc = running_corrects.double() / dataset_sizes[phase]
 
             print(f"{phase} Loss: {epoch_loss} Acc: {epoch_acc}")
-
-
-
-            with SummaryWriter(logdir='logdir/', comment='train_loss') as writer:
-                if phase == 'train':
-                    writer.add_scalar('train_loss', epoch_loss, epoch)
-                    writer.add_scalar('train_acc', epoch_acc, epoch)
-                else:
-                    writer.add_scalar('val_loss', epoch_loss, epoch)
-                    writer.add_scalar('val_acc', epoch_acc, epoch)
-                writer.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
 
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
