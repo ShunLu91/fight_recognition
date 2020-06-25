@@ -1,34 +1,28 @@
 import os
-import time
-
-import numpy as np
 import torch
+import argparse
+
 from torch import nn, optim
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 from torch.autograd import Variable
+from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
 
-# from dataset import VideoDataset, VideoDataset1M
 from newDataset import VideoDataset
 from network import R2Plus1DClassifier
 
-import argparse
-
 
 def argument_parser():
-    parser = argparse.ArgumentParser(description="attribute recognition",
+    parser = argparse.ArgumentParser(description="fight recognition",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--model", type=str, default="resnet50")
-    parser.add_argument("--dataset", type=str, default="RAP")
+    parser.add_argument("--model", type=str, default="R2Plus1D")
     parser.add_argument("--data_dir", type=str, default="./data/Fight/Fight-dataset-2020")
+    parser.add_argument("--snapshots", type=str, default="./snapshots")
     parser.add_argument("--debug", action='store_false')
     parser.add_argument("--batchsize", type=int, default=8)
     parser.add_argument("--epoch", type=int, default=100)
     parser.add_argument("--height", type=int, default=256)
     parser.add_argument("--width", type=int, default=192)
-    parser.add_argument("--lr_ft", type=float, default=0.01, help='learning rate of feature extractor')
-    parser.add_argument("--lr_new", type=float, default=0.1, help='learning rate of classifier_base')
+    parser.add_argument("--lr", type=float, default=0.01, help='learning rate of feature extractor')
     parser.add_argument('--classifier', type=str, default='base', help='classifier name')
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--weight_decay', type=float, default=5e-4)
@@ -46,13 +40,14 @@ print(args)
 
 
 def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epochs=100, model_path="model/"):
-    model = R2Plus1DClassifier(num_classes=num_classes, layer_sizes=layer_sizes)
+    if args.model=='R2Plus1D':
+        model = R2Plus1DClassifier(num_classes=num_classes, layer_sizes=layer_sizes)
 
     model = torch.nn.DataParallel(model, device_ids=[0, 1, 2, 3])
     model = model.cuda()
 
-    criterion = nn.CrossEntropyLoss().cuda()  # standard crossentropy loss for classification
-    optimizer = optim.SGD(model.parameters(), lr=0.01)  # hyperparameters as given in paper sec 4.1
+    criterion = nn.CrossEntropyLoss().cuda()
+    optimizer = optim.SGD(model.parameters(), lr=args.lr)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15,
                                           gamma=0.4)  # the scheduler divides the lr by 10 every 10 epochs
 
@@ -74,10 +69,6 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
     dataset_sizes = {x: len(dataloaders[x].dataset) for x in ['train', 'val']}
 
-    if not os.path.exists(model_path):
-        os.makedirs(model_path)
-
-    start = time.time()
     start_epoch = 0
 
     best_acc = 0
@@ -100,12 +91,8 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
                 optimizer.zero_grad()
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
-                    # we're interested in the indices on the max values, not the values themselves
                     _, preds = torch.max(outputs, 1)
                     _loss = criterion(outputs, labels)
-
-                    # Backpropagate and optimize iff in training mode, else there's no intermediate
-                    # values to backpropagate with and will throw an error.
                     if phase == 'train':
                         _loss.backward()
                         optimizer.step()
@@ -116,12 +103,13 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
             epoch_acc = running_corrects.double() / dataset_sizes[phase]
 
             if phase == 'train':
-                scheduler.step()
+                scheduler.step(epoch)
 
+            print('epoch:', epoch)
             print(f"{phase} Loss: {epoch_loss} Acc: {epoch_acc}")
+            print('-' * 60)
+            print('')
 
-            if not os.path.exists('logdir/'):
-                os.makedirs('logdir/')
             with SummaryWriter(logdir='logdir/', comment='train_loss') as writer:
                 if phase == 'train':
                     writer.add_scalar('train_loss', epoch_loss, epoch)
@@ -130,7 +118,6 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
                     writer.add_scalar('val_loss', epoch_loss, epoch)
                     writer.add_scalar('val_acc', epoch_acc, epoch)
                 writer.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
-
 
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
@@ -142,18 +129,20 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
                 }
                 torch.save(state, os.path.join(model_path, 'epoch_{:d}_acc{:4f}.pth'.format(epoch, epoch_acc)))
 
-    time_elapsed = time.time() - start
-    print(f"Training complete in {time_elapsed // 3600}h {(time_elapsed % 3600) // 60}m {time_elapsed % 60}s")
-
 
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1, 2, 3'
     torch.backends.cudnn.benchmark = True
+
+    if not os.path.exists(args.snapshots):
+        os.makedirs(args.snapshots)
+    if not os.path.exists('logdir/'):
+        os.makedirs('logdir/')
 
     train_model(
         root=os.path.join(args.data_dir, 'videos'),
         num_classes=2,
         layer_sizes=[2, 2, 2, 2],
         num_epochs=args.epoch,
-        model_path="model/"
+        model_path=args.snapshots
     )
