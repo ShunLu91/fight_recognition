@@ -13,7 +13,36 @@ from tensorboardX import SummaryWriter
 from newDataset import VideoDataset
 from network import R2Plus1DClassifier
 
-# Use GPU if available else revert to CPU
+import argparse
+
+
+def argument_parser():
+    parser = argparse.ArgumentParser(description="attribute recognition",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--model", type=str, default="resnet50")
+    parser.add_argument("--dataset", type=str, default="RAP")
+    parser.add_argument("--data_dir", type=str, default="./data/Fight/Fight-dataset-2020")
+    parser.add_argument("--debug", action='store_false')
+    parser.add_argument("--batchsize", type=int, default=8)
+    parser.add_argument("--epoch", type=int, default=100)
+    parser.add_argument("--height", type=int, default=256)
+    parser.add_argument("--width", type=int, default=192)
+    parser.add_argument("--lr_ft", type=float, default=0.01, help='learning rate of feature extractor')
+    parser.add_argument("--lr_new", type=float, default=0.1, help='learning rate of classifier_base')
+    parser.add_argument('--classifier', type=str, default='base', help='classifier name')
+    parser.add_argument('--momentum', type=float, default=0.9)
+    parser.add_argument('--weight_decay', type=float, default=5e-4)
+    parser.add_argument("--train_split", type=str, default="trainval", choices=['train', 'trainval'])
+    parser.add_argument("--valid_split", type=str, default="test", choices=['test', 'valid'])
+    parser.add_argument('--device', default=0, type=str, help='gpu device ids for CUDA_VISIBLE_DEVICES')
+    parser.add_argument("--redirector", action='store_false')
+    parser.add_argument('--use_bn', action='store_false')
+
+    return parser
+
+
+args = argument_parser().parse_args()
+
 
 def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epochs=100, model_path="model/"):
     """Initalizes and the model for a fixed number of epochs, using dataloaders from the specified directory, 
@@ -29,10 +58,7 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
             path (str, optional): The directory to load a model checkpoint from, and if save == True, save to. Defaults to "model_data.pth.tar".
     """
 
-
     # initalize the ResNet 18 version of this model
-    os.environ['CUDA_VISIBLE_DEVICES'] = '2, 3'
-    assert (torch.cuda.is_available())
     torch.backends.cudnn.benchmark = True
 
     model = R2Plus1DClassifier(num_classes=num_classes, layer_sizes=layer_sizes)
@@ -40,36 +66,32 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
     model = torch.nn.DataParallel(model, device_ids=[0, 1])
     model = model.cuda()
 
-    criterion = nn.CrossEntropyLoss().cuda() # standard crossentropy loss for classification
+    criterion = nn.CrossEntropyLoss().cuda()  # standard crossentropy loss for classification
     optimizer = optim.SGD(model.parameters(), lr=0.01)  # hyperparameters as given in paper sec 4.1
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.4)  # the scheduler divides the lr by 10 every 10 epochs
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15,
+                                          gamma=0.4)  # the scheduler divides the lr by 10 every 10 epochs
 
     # prepare the dataloaders into a dict
-    train_path = 'train_split.txt'
-    val_path = 'val_split.txt'
+    train_path = os.path.join(args.data_dir, 'train_split.txt')
+    val_path = os.path.join(args.data_dir, 'val_split.txt')
 
-    train_dataloader = DataLoader(VideoDataset(train_path, root=root, mode='train'), batch_size=8, shuffle=True, num_workers=4)
-    val_dataloader = DataLoader(VideoDataset(val_path, root=root, mode='val'), batch_size=4, num_workers=4)
+    train_dataloader = DataLoader(
+        VideoDataset(train_path, root=root, mode='train'),
+        batch_size=args.batchsize,
+        shuffle=True,
+        num_workers=16
+    )
+    val_dataloader = DataLoader(
+        VideoDataset(val_path, root=root, mode='val'),
+        batch_size=args.batchsize,
+        num_workers=16
+    )
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
-
     dataset_sizes = {x: len(dataloaders[x].dataset) for x in ['train', 'val']}
 
     # saves the time the process was started, to compute total time at the end
     start = time.time()
     epoch_resume = 0
-
-    # check if there was a previously saved checkpoint
-    # if os.path.exists(path):
-    #     # loads the checkpoint
-    #     checkpoint = torch.load(path)
-    #     print("Reloading from previously saved checkpoint")
-    #
-    #     # restores the model and optimizer state_dicts
-    #     model.load_state_dict(checkpoint['state_dict'])
-    #     optimizer.load_state_dict(checkpoint['opt_dict'])
-    #
-    #     # obtains the epoch the training is to resume from
-    #     epoch_resume = checkpoint["epoch"]
 
     best_acc = 0
     for epoch in tqdm(range(epoch_resume, num_epochs), unit="epochs", initial=epoch_resume, total=num_epochs):
@@ -89,7 +111,6 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
             else:
                 model.eval()
 
-
             for inputs, labels in dataloaders[phase]:
                 # move inputs and labels to the device the training is taking place on
                 # inputs = inputs.to(device)
@@ -102,17 +123,17 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
                 # keep intermediate states iff backpropagation will be performed. If false, 
                 # then all intermediate states will be thrown away during evaluation, to use
                 # the least amount of memory possible.
-                with torch.set_grad_enabled(phase=='train'):
+                with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
                     # we're interested in the indices on the max values, not the values themselves
-                    _, preds = torch.max(outputs, 1)  
+                    _, preds = torch.max(outputs, 1)
                     loss = criterion(outputs, labels)
 
                     # Backpropagate and optimize iff in training mode, else there's no intermediate
                     # values to backpropagate with and will throw an error.
                     if phase == 'train':
                         loss.backward()
-                        optimizer.step()   
+                        optimizer.step()
 
                 running_loss += loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
@@ -152,9 +173,16 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
                          "best_acc": best_acc}
                 torch.save(state, os.path.join(model_path, 'epoch_{:d}_acc{:4f}.pth'.format(epoch, epoch_acc)))
 
-    time_elapsed = time.time() - start    
-    print(f"Training complete in {time_elapsed//3600}h {(time_elapsed%3600)//60}m {time_elapsed %60}s")
+    time_elapsed = time.time() - start
+    print(f"Training complete in {time_elapsed // 3600}h {(time_elapsed % 3600) // 60}m {time_elapsed % 60}s")
 
 
 if __name__ == '__main__':
-    train_model(root='data/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epochs=100, model_path="model/")
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+    train_model(
+        root=os.path.join(args.data_dir),
+        num_classes=2,
+        layer_sizes=[2, 2, 2, 2],
+        num_epochs=args.epoch,
+        model_path="model/"
+    )
