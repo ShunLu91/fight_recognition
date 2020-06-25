@@ -42,13 +42,13 @@ def argument_parser():
 
 
 args = argument_parser().parse_args()
+print(args)
 
 
 def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epochs=100, model_path="model/"):
-
     model = R2Plus1DClassifier(num_classes=num_classes, layer_sizes=layer_sizes)
 
-    model = torch.nn.DataParallel(model, device_ids=[0, 1])
+    model = torch.nn.DataParallel(model, device_ids=[0, 1, 2, 3])
     model = model.cuda()
 
     criterion = nn.CrossEntropyLoss().cuda()  # standard crossentropy loss for classification
@@ -74,57 +74,49 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
     dataloaders = {'train': train_dataloader, 'val': val_dataloader}
     dataset_sizes = {x: len(dataloaders[x].dataset) for x in ['train', 'val']}
 
-    # saves the time the process was started, to compute total time at the end
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+
     start = time.time()
-    epoch_resume = 0
+    start_epoch = 0
 
     best_acc = 0
-    for epoch in tqdm(range(epoch_resume, num_epochs), unit="epochs", initial=epoch_resume, total=num_epochs):
-        # each epoch has a training and validation step, in that order
+    for epoch in range(start_epoch, num_epochs):
         for phase in ['train', 'val']:
 
-            # reset the running loss and corrects
-            running_loss = 0.0
+            loss = 0.0
             running_corrects = 0
 
             # set model to train() or eval() mode depending on whether it is trained
             # or being validated. Primarily affects layers such as BatchNorm or Dropout.
             if phase == 'train':
-                # scheduler.step() is to be called once every epoch during training
-                scheduler.step()
                 model.train()
             else:
                 model.eval()
 
             for inputs, labels in dataloaders[phase]:
-                # move inputs and labels to the device the training is taking place on
-                # inputs = inputs.to(device)
-                # labels = labels.to(device)
                 inputs = Variable(inputs).cuda()
                 labels = Variable(labels.long()).cuda()
-
                 optimizer.zero_grad()
-
-                # keep intermediate states iff backpropagation will be performed. If false, 
-                # then all intermediate states will be thrown away during evaluation, to use
-                # the least amount of memory possible.
                 with torch.set_grad_enabled(phase == 'train'):
                     outputs = model(inputs)
                     # we're interested in the indices on the max values, not the values themselves
                     _, preds = torch.max(outputs, 1)
-                    loss = criterion(outputs, labels)
+                    _loss = criterion(outputs, labels)
 
                     # Backpropagate and optimize iff in training mode, else there's no intermediate
                     # values to backpropagate with and will throw an error.
                     if phase == 'train':
-                        loss.backward()
+                        _loss.backward()
                         optimizer.step()
-
-                running_loss += loss.item() * inputs.size(0)
+                loss += _loss.item() * inputs.size(0)
                 running_corrects += torch.sum(preds == labels.data)
 
-            epoch_loss = running_loss / dataset_sizes[phase]
+            epoch_loss = loss / dataset_sizes[phase]
             epoch_acc = running_corrects.double() / dataset_sizes[phase]
+
+            if phase == 'train':
+                scheduler.step()
 
             print(f"{phase} Loss: {epoch_loss} Acc: {epoch_acc}")
 
@@ -139,23 +131,15 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
                     writer.add_scalar('val_acc', epoch_acc, epoch)
                 writer.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
 
-            if not os.path.exists(model_path):
-                os.makedirs(model_path)
 
             if phase == 'val' and epoch_acc > best_acc:
                 best_acc = epoch_acc
-                state = {'epoch': epoch,
-                         'state_dict': model.state_dict(),
-                         'optimizer': optimizer.state_dict(),
-                         'val_acc': epoch_acc}
-                torch.save(state, os.path.join(model_path, 'epoch_{:d}_acc{:4f}.pth'.format(epoch, epoch_acc)))
-
-            elif epoch % 10 == 0:
-                state = {"epcoh": epoch,
-                         "optimizer_state_dict": optimizer.state_dict(),
-                         "state_dict": model.state_dict(),
-                         "val_acc": epoch_acc,
-                         "best_acc": best_acc}
+                state = {
+                    'epoch': epoch,
+                    'state_dict': model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'val_acc': epoch_acc
+                }
                 torch.save(state, os.path.join(model_path, 'epoch_{:d}_acc{:4f}.pth'.format(epoch, epoch_acc)))
 
     time_elapsed = time.time() - start
@@ -163,9 +147,8 @@ def train_model(root='videos/', num_classes=2, layer_sizes=[2, 2, 2, 2], num_epo
 
 
 if __name__ == '__main__':
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0, 1, 2, 3'
     torch.backends.cudnn.benchmark = True
-
 
     train_model(
         root=os.path.join(args.data_dir, 'videos'),
