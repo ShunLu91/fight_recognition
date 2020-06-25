@@ -42,7 +42,7 @@ def train_model(root, num_classes, layer_sizes, num_epochs, model_path):
     if args.model == 'R2Plus1D':
         model = R2Plus1DClassifier(num_classes=num_classes, layer_sizes=layer_sizes)
 
-    model = torch.nn.DataParallel(model, device_ids=[0, 1, 2, 3])
+    # model = torch.nn.DataParallel(model, device_ids=[0, 1, 2, 3])
     model = model.cuda()
 
     criterion = nn.CrossEntropyLoss().cuda()
